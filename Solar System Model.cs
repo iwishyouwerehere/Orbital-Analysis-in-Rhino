@@ -8,7 +8,45 @@ using System.Collections.Generic;
 using Rhino.UI;
 using System;
 using Rhino.Display;
+using System.IO;
 
+/*
+ *Things to be added before our model can become actually intresting :
+There are a few ways to make the calculations in the provided code more accurate:
+
+Use a higher precision for the gravitational constant: The value used for the gravitational constant (6.67 * 10^-11) 
+is only accurate to two significant figures. A more accurate value would be 6.674184 * 10^-11.
+Use a more accurate value for the mass of the sun: The mass of the sun used in the code (1.989 * 10^30 kilograms) 
+is only accurate to two significant figures. A more accurate value would be 1.989 x 10^30 kilograms.
+Use a more accurate value for the distance from the sun for each planet: The distance from the sun for each planet is given in meters, 
+but the actual distances are much larger (on the order of 10^11 meters). This can lead to significant errors in the calculations. To improve the 
+accuracy, you should use the average distance from the sun for each planet in astronomical units (AU), which is a unit of distance specifically 
+defined to represent the distance from the sun to Earth (1 AU is equal to approximately 149.6 million kilometers).
+Take into account the elliptical shape of planetary orbits: Planetary orbits are not perfectly circular, but are actually elliptical. 
+This means that the distance from the sun changes over the course of the orbit. To account for this, you could use the average distance 
+from the sun over the course of the orbit in your calculations. This average distance is known as the semi-major axis of the elliptical orbit.
+Use more accurate values for the mass of each planet: The masses of the planets are only given to two significant figures in the provided code.
+Using more accurate values for the masses of the planets would improve the accuracy of the calculations. You can find more accurate values 
+for the masses of the planets in kilograms on various online resources such as NASA’s Planetary Fact Sheets (Planetary Fact Sheet).
+Another set of tasks to accomplish (that you can commit on the repo)
+
+The influence of other celestial bodies: The gravitational force on a planet is not only due to the sun, but also due to the presence of 
+other celestial bodies such as other planets and moons. To account for these additional forces, you would need to consider the masses and 
+distances of these bodies as well.
+The general theory of relativity: The theory of relativity, developed by Albert Einstein, describes how the presence of matter and energy 
+can affect the curvature of space-time. This theory can cause small deviations from the predictions of classical mechanics, such as the 
+laws of gravitation and motion. To incorporate the effects of relativity, you would need to use more complex mathematical models such as 
+the Schwarzschild metric or the Kerr metric.
+The oblateness of celestial bodies: Celestial bodies are not perfectly spherical, but are slightly flattened at the poles due to their rotation.
+This means that the gravitational force at the surface of a celestial body depends on the distance from the body’s center of mass and the latitude. 
+To account for this effect, you could use a more accurate model of the gravitational field, such as the gravitational potential of a rotating, 
+oblate spheroid.
+The non-uniform distribution of mass within celestial bodies: The mass of celestial bodies is not evenly distributed, but can be concentrated in 
+certain regions such as the core or mantle. This can affect the gravitational force experienced by objects at the surface. To account for this 
+effect, you could use a more accurate model of the gravitational field, such as the gravitational potential of a body with a non-uniform mass 
+distribution.
+ *
+ */
 namespace My_Rhino_Commands
 {
     public class SectionAllObjects : Command
@@ -20,23 +58,28 @@ namespace My_Rhino_Commands
             public Sphere Shape { get; set; }
             public double DistanceFromSun { get; set; }  // in meters
             public double Mass { get; set; }  // in kilograms
+            public double Eccentricity { get; set; } //needed for accurate orbital calculations
             public Guid Guid { get; set; }
-            public Planet(string name, Sphere shape, double distanceFromSun, double mass, Guid guid)
+            public Planet(string name, Sphere shape, double distanceFromSun, double mass, Guid guid, double eccentricity)
             {
                 Name = name;
                 Shape = shape;
                 DistanceFromSun = distanceFromSun;
                 Mass = mass;
                 Guid = guid;
+                Eccentricity = eccentricity;
             }
         }
         protected override Result RunCommand(RhinoDoc doc, RunMode mode)
         {
+            //all uranus values are wrong to be fixxed with the manual  perigee apogee and SemiMajorAxes
             List<string> planetNames = new List<string>() { "Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune" };
             List<double> distancesFromSun = new List<double>() { 5.79 * Math.Pow(10, 7), 1.08 * Math.Pow(10, 8), 1.50 * Math.Pow(10, 8), 2.28 * Math.Pow(10, 8), 7.78 * Math.Pow(10, 8), 1.43 * Math.Pow(10, 9), 2.87 * Math.Pow(10, 9), 4.50 * Math.Pow(10, 9) };
             List<double> masses = new List<double>() { 3.30 * Math.Pow(10, 23), 4.87 * Math.Pow(10, 24), 5.97 * Math.Pow(10, 24), 6.42 * Math.Pow(10, 23), 1.90 * Math.Pow(10, 27), 5.68 * Math.Pow(10, 26), 8.68 * Math.Pow(10, 25), 1.02 * Math.Pow(10, 26) };
-
-            List<Planet> planets = DrawPlanets(planetNames, distancesFromSun, masses);
+            List<double> perigees = new List<double>() { 4.092e10, 7.232e10, 1.471e11, 1.383e11, 4.220e11, 9.050e10, 2.735e11, 4.506e11 };
+            List<double> apogees = new List<double>() { 4.794e10, 7.850e10, 1.521e11, 1.666e11, 8.157e11, 1.352e11, 3.004e11, 4.600e11 }; 
+            List<double> semiMajorAxes = new List<double>() { 5.792e10, 1.082e11, 1.496e11, 2.279e11, 7.785e11, 1.429e12, 2.870e12, 4.498e12 }; 
+            List<Planet> planets = DrawPlanets(planetNames, distancesFromSun, masses,  perigees, apogees, semiMajorAxes);
             double sunMass = 1.989 * Math.Pow(10, 30);  // in kilograms
             CalculateOrbits(planets, sunMass);
             DrawOrbits(planets, sunMass);
@@ -46,7 +89,7 @@ namespace My_Rhino_Commands
         }
 
         public static List<Planet> DrawPlanets(List<string> planetNames, List<double> distancesFromSun,
-            List<double> masses)
+            List<double> masses,List<double> perigee, List<double> apogee,List<double> semiMajorAxes)
         {
             // Set the display mode to wireframe
             RhinoDoc.ActiveDoc.Views.RedrawEnabled = false;
@@ -66,8 +109,11 @@ namespace My_Rhino_Commands
                 // Add the sphere to the document and get its Guid
                 Guid guid=RhinoDoc.ActiveDoc.Objects.AddSphere(sphere);
 
+                //double eccentricity = GetEccentricity(semiMajorAxes, perigee, apogee); 
+                double eccentricity = GetEccentricity(semiMajorAxes, perigee, apogee);
+
                 // Create a planet object and add it to the list
-                Planet planet = new Planet(planetNames[i], sphere, distancesFromSun[i], masses[i], guid);
+                Planet planet = new Planet(planetNames[i], sphere, distancesFromSun[i], masses[i], guid,eccentricity);
                 planets.Add(planet);
             }
 
@@ -75,6 +121,11 @@ namespace My_Rhino_Commands
             RhinoDoc.ActiveDoc.Views.Redraw();
 
             return planets;
+        }
+
+        private static double GetEccentricity(double semiMajorAxes, double perigee, double apogee)
+        {
+            return (apogee - perigee) / (2 * semiMajorAxes);
         }
 
         public static void CalculateOrbits(List<Planet> planets, double sunMass)
@@ -100,6 +151,10 @@ namespace My_Rhino_Commands
             E: eccentric anomaly
             */
             // Calculate the orbits of the planets
+
+
+            //ok let's integrate the eliptical shape first
+            //we need the semi-major axis, semi minor axis, the focus(F), the eccentric anomaly (E) now we
             foreach (Planet planet in planets)
             {
                 // Calculate the gravitational force between the sun and the planet
@@ -119,6 +174,24 @@ namespace My_Rhino_Commands
                 RhinoApp.WriteLine($"  Orbital period: {period} seconds");
             }
         }
+
+
+
+
+        //getEllipseParameters won't work for long distances over 10ly, to fix the formulas,
+        //it doesnt account for the gravitational field of close celestial bodies
+        private static void GetEllipseParameters(Planet planet, out double a, out double b, out double F)
+        {
+            // Calculate the semi-major axis of the ellipse
+            a = planet.DistanceFromSun / (1 - planet.Eccentricity);
+                                                                    
+
+            // Calculate the semi-minor axis of the ellipse
+            b = Math.Sqrt(a * a * (1 - planet.Eccentricity * planet.Eccentricity));
+            // Calculate the focus of the ellipse
+            F = a * planet.Eccentricity;
+        }
+
         public static void DrawOrbits(List<Planet> planets, double sunMass)
         {
             // Calculate the orbits of the planets
@@ -137,7 +210,12 @@ namespace My_Rhino_Commands
                 double orbitRadius = planet.DistanceFromSun;
 
                 // Create a curve for the orbit
-                Curve orbit = Curve.CreateInterpolatedCurve(GetOrbitPoints(orbitRadius), 3);
+
+                //We must get A,B,F values, which rappresent the properties of an eliptical shape
+                double a, b, F;
+                GetEllipseParameters(planet, out a, out b, out F); //this method calculates the a,b,F values
+
+                Curve orbit = Curve.CreateInterpolatedCurve(GetOrbitPoints(a,b,f), 3);
 
                 // Add the curve to the document
                 RhinoDoc.ActiveDoc.Objects.AddCurve(orbit);
@@ -146,8 +224,14 @@ namespace My_Rhino_Commands
             // Redraw the view
             RhinoDoc.ActiveDoc.Views.Redraw();
         }
-        private static Point3d[] GetOrbitPoints(double orbitRadius)
+        private static Point3d[] GetOrbitPoints(double a, double b, double F)
         {
+            /*Determine the semi-major axis (a) and the semi-minor axis (b) of the ellipse. These are the lengths of the major and
+             minor axes of the ellipse, respectively, and are related to the distance from the sun and the eccentricity of the orbit.
+            Determine the focus (F) of the ellipse. This is a point within the ellipse that is closer to the sun than the center of the ellipse.
+            Determine the eccentric anomaly (E) at each point along the orbit. This is a measure of the angle between the focus and 
+            the position of the planet at a given point in time.
+            */
             // Set the number of points in the orbit
             int pointCount = 360;
 
@@ -157,9 +241,9 @@ namespace My_Rhino_Commands
             // Generate points along the orbit
             for (int i = 0; i < pointCount; i++)
             {
-                double angle = i * 2 * Math.PI / pointCount;
-                double x = orbitRadius * Math.Cos(angle);
-                double y = orbitRadius * Math.Sin(angle);
+                double E = i * 2 * Math.PI / pointCount;
+                double x = a * Math.Cos(E) - F;
+                double y = b * Math.Sin(E);
                 points[i] = new Point3d(x, y, 0);
             }
 

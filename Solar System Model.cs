@@ -1,4 +1,4 @@
-﻿using Rhino;
+using Rhino;
 using Rhino.Geometry;
 using Rhino.DocObjects;
 using Rhino.Commands;
@@ -9,6 +9,8 @@ using Rhino.UI;
 using System;
 using Rhino.Display;
 using System.IO;
+using System.Runtime.Remoting;
+using ObjRef = Rhino.DocObjects.ObjRef;
 
 /*
  *Things to be added before our model can become actually intresting :
@@ -78,18 +80,19 @@ namespace My_Rhino_Commands
             List<double> masses = new List<double>() { 3.30 * Math.Pow(10, 23), 4.87 * Math.Pow(10, 24), 5.97 * Math.Pow(10, 24), 6.42 * Math.Pow(10, 23), 1.90 * Math.Pow(10, 27), 5.68 * Math.Pow(10, 26), 8.68 * Math.Pow(10, 25), 1.02 * Math.Pow(10, 26) };
             List<double> perigees = new List<double>() { 4.092e10, 7.232e10, 1.471e11, 1.383e11, 4.220e11, 9.050e10, 2.735e11, 4.506e11 };
             List<double> apogees = new List<double>() { 4.794e10, 7.850e10, 1.521e11, 1.666e11, 8.157e11, 1.352e11, 3.004e11, 4.600e11 }; 
-            List<double> semiMajorAxes = new List<double>() { 5.792e10, 1.082e11, 1.496e11, 2.279e11, 7.785e11, 1.429e12, 2.870e12, 4.498e12 }; 
-            List<Planet> planets = DrawPlanets(planetNames, distancesFromSun, masses,  perigees, apogees, semiMajorAxes);
+            List<double> semiMajorAxes = new List<double>() { 5.792e10, 1.082e11, 1.496e11, 2.279e11, 7.785e11, 1.429e12, 2.870e12, 4.498e12 };
+            List<double> semiMinorAxes = new List<double>() { 0.38709893,0.72333199,0.9932373,1.523666231,5.20336301,9.53707032,19.19126393,30.06896348 };
+            List<Planet> planets = DrawPlanets(planetNames, distancesFromSun, masses,  perigees, apogees, semiMajorAxes,semiMinorAxes);
             double sunMass = 1.989 * Math.Pow(10, 30);  // in kilograms
             CalculateOrbits(planets, sunMass);
-            DrawOrbits(planets, sunMass);
+            DrawOrbits(planets, sunMass,semiMajorAxes,semiMinorAxes);
             AddMaterialsToPlanets(planets);
 
             return Result.Success;
         }
 
         public static List<Planet> DrawPlanets(List<string> planetNames, List<double> distancesFromSun,
-            List<double> masses,List<double> perigee, List<double> apogee,List<double> semiMajorAxes)
+            List<double> masses,List<double> perigee, List<double> apogee,List<double> semiMajorAxes,List<double> semiMinorAxes)
         {
             // Set the display mode to wireframe
             RhinoDoc.ActiveDoc.Views.RedrawEnabled = false;
@@ -110,7 +113,7 @@ namespace My_Rhino_Commands
                 Guid guid=RhinoDoc.ActiveDoc.Objects.AddSphere(sphere);
 
                 //double eccentricity = GetEccentricity(semiMajorAxes, perigee, apogee); 
-                double eccentricity = GetEccentricity(semiMajorAxes, perigee, apogee);
+                double eccentricity = GetEccentricity(semiMajorAxes[i], perigee[i], apogee[i]);
 
                 // Create a planet object and add it to the list
                 Planet planet = new Planet(planetNames[i], sphere, distancesFromSun[i], masses[i], guid,eccentricity);
@@ -192,8 +195,9 @@ namespace My_Rhino_Commands
             F = a * planet.Eccentricity;
         }
 
-        public static void DrawOrbits(List<Planet> planets, double sunMass)
+        public static void DrawOrbits(List<Planet> planets, double sunMass,List<double> semiMajorAxis,List<double>semiMinorAxis)
         {
+            int i = 0;
             // Calculate the orbits of the planets
             foreach (Planet planet in planets)
             {
@@ -209,21 +213,35 @@ namespace My_Rhino_Commands
                 // Calculate the radius of the orbit
                 double orbitRadius = planet.DistanceFromSun;
 
-                // Create a curve for the orbit
-
                 //We must get A,B,F values, which rappresent the properties of an eliptical shape
-                double a, b, F;
-                GetEllipseParameters(planet, out a, out b, out F); //this method calculates the a,b,F values
+                double a, b, f;
+                f = GetFocus(semiMajorAxis[i], semiMinorAxis[i]);
+                GetEllipseParameters(planet, out a, out b, out f); //F = √(a^2 - b^2)
 
-                Curve orbit = Curve.CreateInterpolatedCurve(GetOrbitPoints(a,b,f), 3);
+                Curve orbit = Curve.CreateInterpolatedCurve(GetOrbitPoints(a, b, f), 3);
+                //make a method to determine the degree of the curve based on the eleptical value
 
-                // Add the curve to the document
+
                 RhinoDoc.ActiveDoc.Objects.AddCurve(orbit);
+                i++;
             }
 
             // Redraw the view
             RhinoDoc.ActiveDoc.Views.Redraw();
         }
+
+        private static double GetFocus(double semiMajorAxis, double semiMinorAxis)
+        {
+            // Calculate the eccentricity of the ellipse
+            double eccentricity = Math.Sqrt(semiMajorAxis * semiMajorAxis - semiMinorAxis * semiMinorAxis) / semiMajorAxis;
+
+            // Calculate the focus of the ellipse
+            double focus = Math.Sqrt(semiMajorAxis * semiMajorAxis - semiMinorAxis * semiMinorAxis);
+
+            return focus;
+        }
+
+       
         private static Point3d[] GetOrbitPoints(double a, double b, double F)
         {
             /*Determine the semi-major axis (a) and the semi-minor axis (b) of the ellipse. These are the lengths of the major and
@@ -249,7 +267,7 @@ namespace My_Rhino_Commands
 
             return points;
         }
-        public static void AddMaterialsToPlanets(List<Planet> planets) //add planets here
+        public static void AddMaterialsToPlanets(List<Planet> planets) 
         {
             // Set up a dictionary of material names and colors for the planets
             Dictionary<string, Color4f> colors = new Dictionary<string, Color4f>()
@@ -309,11 +327,13 @@ namespace My_Rhino_Commands
                 // Modify the geometry of the object
                 Sphere sphere = new Sphere(currentPosition, planet.Shape.Radius);
                 // Get a reference to the underlying geometry object
-
+                ObjRef planetRef = new ObjRef(planet.Guid);
+                ObjRef.Geometry sphereGeometry= sphere;
+                RhinoDoc.ActiveDoc.Objects.Replace(planetRef, sphere.I);
 
                 // Redraw the view
                 RhinoDoc.ActiveDoc.Views.Redraw();
             }
         }
-    }
+    } 
 }

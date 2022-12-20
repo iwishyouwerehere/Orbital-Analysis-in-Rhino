@@ -121,17 +121,27 @@ namespace My_Rhino_Commands
                 double E = M + e * Math.Sin(M);
                 double x = a * Math.Cos(E);
                 double y = b * Math.Sin(E);
+                double z = 0;  // Initialize the Z coordinate to 0
+
+                // Modify the Z coordinate to take into account the orbit's inclination (angle of orbit relative to the XY plane)
+                double inclination = 45;  // Replace this with the actual inclination of the orbit
+                z = Math.Sin(inclination) * y;  // Modify the Z coordinate based on the inclination of the orbit
 
                 // Create a sphere for the planet
                 double radius = masses[i] / (4.0 * Math.PI * Math.Pow(r, 3) / 3.0);
-                Sphere sphere = new Sphere(new Point3d(x, y, 0), radius);
+                Sphere sphere = new Sphere(new Point3d(x, y, z), radius);
 
                 // Add the sphere to the document and get its Guid
                 Guid guid = RhinoDoc.ActiveDoc.Objects.AddSphere(sphere);
 
                 // Create a planet object and add it to the list
-                Planet planet = new Planet(planetNames[i], sphere, r, masses[i], guid,e);
+                Planet planet = new Planet(planetNames[i], sphere, r, masses[i], guid, e);
                 planets.Add(planet);
+
+                // Add a text dot for the planet
+                Point3d textDotLocation = new Point3d(x, y, z);
+                TextDot textDot = new TextDot(planetNames[i], textDotLocation);
+                RhinoDoc.ActiveDoc.Objects.AddTextDot(textDot);
             }
 
             // Redraw the view
@@ -346,8 +356,10 @@ namespace My_Rhino_Commands
                 ObjRef planetRef = new ObjRef(planet.Guid);
                 Guid sphereGuid=RhinoDoc.ActiveDoc.Objects.Add(brepSphere);
                 RhinoDoc.ActiveDoc.Objects.Replace(planetRef, RhinoDoc.ActiveDoc.Objects.Find(sphereGuid));
+
                 // Redraw the view
                 RhinoDoc.ActiveDoc.Views.Redraw();
+
             }
         }
     } 

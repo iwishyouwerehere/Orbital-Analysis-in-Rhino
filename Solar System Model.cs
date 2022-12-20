@@ -53,7 +53,7 @@ namespace My_Rhino_Commands
 {
     public class SectionAllObjects : Command
     {
-        public override string EnglishName { get { return "SectionAllObjects"; } }
+        public override string EnglishName { get { return "Galaxy"; } }
         public class Planet
         {
             public string Name { get; set; }
@@ -123,10 +123,16 @@ namespace My_Rhino_Commands
                 double y = b * Math.Sin(E);
                 double z = 0;  // Initialize the Z coordinate to 0
 
-                // Modify the Z coordinate to take into account the orbit's inclination (angle of orbit relative to the XY plane)
-                double inclination = 45;  // Replace this with the actual inclination of the orbit
-                z = Math.Sin(inclination) * y;  // Modify the Z coordinate based on the inclination of the orbit
+                // Calculate the orbital plane of the planet
+                Vector3d normal = new Vector3d(-b * Math.Sin(E), a * Math.Cos(E), 0);
+                Plane orbitalPlane = new Plane(new Point3d(0, 0, 0), normal);
 
+                // Calculate the inclination of the orbit
+                Vector3d worldXYNormal = new Vector3d(0, 0, 1);
+                double inclination = Vector3d.VectorAngle(normal, worldXYNormal);
+
+                // Modify the Z coordinate based on the inclination of the orbit
+                z = Math.Sin(inclination) * y;
                 // Create a sphere for the planet
                 double radius = masses[i] / (4.0 * Math.PI * Math.Pow(r, 3) / 3.0);
                 Sphere sphere = new Sphere(new Point3d(x, y, z), radius);

@@ -61,6 +61,7 @@ namespace My_Rhino_Commands
             public double DistanceFromSun { get; set; }  // in meters
             public double Mass { get; set; }  // in kilograms
             public double Eccentricity { get; set; } //needed for accurate orbital calculations
+            public double OrbitPeriod { get; private set; }
             public Guid Guid { get; set; }
             public Planet(string name, Sphere shape, double distanceFromSun, double mass, Guid guid, double eccentricity)
             {
@@ -70,6 +71,8 @@ namespace My_Rhino_Commands
                 Mass = mass;
                 Guid = guid;
                 Eccentricity = eccentricity;
+                OrbitPeriod = 2 * Math.PI * Math.Sqrt(Math.Pow(DistanceFromSun, 3) / (Mass * 1.989 * Math.Pow(10, 30)));
+
             }
         }
         protected override Result RunCommand(RhinoDoc doc, RunMode mode)
@@ -90,7 +93,10 @@ namespace My_Rhino_Commands
 
             return Result.Success;
         }
-
+        public static double CalculateOrbitPeriod(double distanceFromSun, double mass, double sunMass)
+        {
+            return 2 * Math.PI * Math.Sqrt(Math.Pow(distanceFromSun, 3) / (mass * sunMass));
+        }
         public static List<Planet> DrawPlanets(List<string> planetNames, List<double> distancesFromSun,
             List<double> masses,List<double> perigee, List<double> apogee,List<double> semiMajorAxes,List<double> semiMinorAxes)
         {
@@ -105,18 +111,26 @@ namespace My_Rhino_Commands
             // Draw each planet
             for (int i = 0; i < planetNames.Count; i++)
             {
+                // Calculate the position of the planet in its orbit
+                double r = distancesFromSun[i];
+                double e = GetEccentricity(semiMajorAxes[i], perigee[i], apogee[i]);
+                double a = r / (1 - e);
+                double b = Math.Sqrt(a * a * (1 - e * e));
+                double T = CalculateOrbitPeriod(distancesFromSun[i], masses[i], 1.989e30);
+                double M = 2 * Math.PI * 25000 / T;
+                double E = M + e * Math.Sin(M);
+                double x = a * Math.Cos(E);
+                double y = b * Math.Sin(E);
+
                 // Create a sphere for the planet
-                double radius = masses[i] / (4.0 * Math.PI * Math.Pow(distancesFromSun[i], 3) / 3.0);
-                Sphere sphere = new Sphere(Point3d.Origin, radius);
+                double radius = masses[i] / (4.0 * Math.PI * Math.Pow(r, 3) / 3.0);
+                Sphere sphere = new Sphere(new Point3d(x, y, 0), radius);
 
                 // Add the sphere to the document and get its Guid
-                Guid guid=RhinoDoc.ActiveDoc.Objects.AddSphere(sphere);
-
-                //double eccentricity = GetEccentricity(semiMajorAxes, perigee, apogee); 
-                double eccentricity = GetEccentricity(semiMajorAxes[i], perigee[i], apogee[i]);
+                Guid guid = RhinoDoc.ActiveDoc.Objects.AddSphere(sphere);
 
                 // Create a planet object and add it to the list
-                Planet planet = new Planet(planetNames[i], sphere, distancesFromSun[i], masses[i], guid,eccentricity);
+                Planet planet = new Planet(planetNames[i], sphere, r, masses[i], guid,e);
                 planets.Add(planet);
             }
 
@@ -326,11 +340,12 @@ namespace My_Rhino_Commands
 
                 // Modify the geometry of the object
                 Sphere sphere = new Sphere(currentPosition, planet.Shape.Radius);
+                Brep brepSphere = Brep.CreateFromSphere(sphere);
+    
                 // Get a reference to the underlying geometry object
                 ObjRef planetRef = new ObjRef(planet.Guid);
-                ObjRef.Geometry sphereGeometry= sphere;
-                RhinoDoc.ActiveDoc.Objects.Replace(planetRef, sphere.I);
-
+                Guid sphereGuid=RhinoDoc.ActiveDoc.Objects.Add(brepSphere);
+                RhinoDoc.ActiveDoc.Objects.Replace(planetRef, RhinoDoc.ActiveDoc.Objects.Find(sphereGuid));
                 // Redraw the view
                 RhinoDoc.ActiveDoc.Views.Redraw();
             }
